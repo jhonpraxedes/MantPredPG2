@@ -1,5 +1,6 @@
+// src/pages/Reportes/index.tsx
 import { Maquinaria } from '@/constants/maquinaria';
-import { MaquinariaStore } from '@/services/maquinariaLocal';
+import { getMaquinaria } from '@/services/apiMaquinaria';
 import { DownloadOutlined } from '@ant-design/icons';
 import type { ProColumns } from '@ant-design/pro-components';
 import { PageContainer, ProTable } from '@ant-design/pro-components';
@@ -15,9 +16,10 @@ const Reportes: React.FC = () => {
   const cargarMaquinaria = async () => {
     try {
       setLoading(true);
-      const lista = await MaquinariaStore.list();
+      const lista = await getMaquinaria();
       setData(lista);
     } catch (error) {
+      console.error('Error cargando maquinaria desde backend:', error);
       message.error('Error al cargar los datos de maquinaria');
     } finally {
       setLoading(false);
@@ -86,12 +88,28 @@ const Reportes: React.FC = () => {
           4: { cellWidth: 100 },
           5: { cellWidth: 100 },
         },
+        didDrawPage: () => {
+          // pie de página
+          const pageCount = doc.getNumberOfPages();
+          const page = doc.getCurrentPageInfo().pageNumber;
+          doc.setFontSize(9);
+          doc.text(
+            `Generado: ${new Date().toLocaleString()}`,
+            40,
+            doc.internal.pageSize.height - 20,
+          );
+          doc.text(
+            `Página ${page} / ${pageCount}`,
+            doc.internal.pageSize.width - 100,
+            doc.internal.pageSize.height - 20,
+          );
+        },
       });
 
-      // Esto es lo que funciona SIEMPRE en Brave 🔥
+      // Abrir PDF en nueva pestaña (compatible con Brave/Chrome/Firefox)
       const pdfBlob = doc.output('blob');
       const url = URL.createObjectURL(pdfBlob);
-      window.open(url, '_blank'); // Abre el PDF en una nueva pestaña
+      window.open(url, '_blank');
 
       message.success(
         'Reporte PDF generado. Se abrirá en una nueva pestaña ✅',

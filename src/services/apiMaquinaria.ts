@@ -1,18 +1,24 @@
 // src/services/apiMaquinaria.ts
 import { Maquinaria } from '@/constants/maquinaria';
 
-const API_BASE = process.env.API_BASE_URL || 'http://127.0.0.1:8001';
+// Lectura segura de variable de entorno (compatible con Vite, Webpack, etc.)
+const API_BASE =
+  (import.meta as any)?.env?.VITE_API_BASE_URL ||
+  (process as any)?.env?.VITE_API_BASE_URL ||
+  (typeof window !== 'undefined' && (window as any).__env?.VITE_API_BASE_URL) ||
+  'http://127.0.0.1:8001';
 
 // Obtener todas las máquinas
 export async function getMaquinaria(): Promise<Maquinaria[]> {
-  const res = await fetch(`${API_BASE}/maquinaria`);
+  const res = await fetch(`${API_BASE}/maquinaria`, { cache: 'no-store' });
   if (!res.ok) throw new Error('Error al obtener maquinaria');
   return res.json();
 }
 
 // Crear nueva máquina
-export async function createMaquinaria(data: Partial<Maquinaria>): Promise<Maquinaria> {
-  // Asegurar que id = numero_serie para el backend
+export async function createMaquinaria(
+  data: Partial<Maquinaria>,
+): Promise<Maquinaria> {
   const payload = {
     ...data,
     id: data.numero_serie || data.id,
@@ -28,21 +34,32 @@ export async function createMaquinaria(data: Partial<Maquinaria>): Promise<Maqui
     const errorData = await res.json().catch(() => ({}));
     throw new Error(errorData.detail || 'Error al crear maquinaria');
   }
-  return res.json();
+
+  const created = await res.json();
+
+  // Emitir evento global para que el Dashboard lo escuche
+  window.dispatchEvent(
+    new CustomEvent('maquinaria:created', { detail: created }),
+  );
+
+  return created;
 }
 
 // Eliminar una máquina
 export async function deleteMaquinaria(id: string): Promise<void> {
   const res = await fetch(`${API_BASE}/maquinaria/${id}`, { method: 'DELETE' });
-
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
     throw new Error(errorData.detail || 'Error al eliminar maquinaria');
   }
+  window.dispatchEvent(new CustomEvent('maquinaria:deleted', { detail: id }));
 }
 
 // Actualizar máquina
-export async function updateMaquinaria(id: string, data: Partial<Maquinaria>): Promise<Maquinaria> {
+export async function updateMaquinaria(
+  id: string,
+  data: Partial<Maquinaria>,
+): Promise<Maquinaria> {
   const res = await fetch(`${API_BASE}/maquinaria/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -52,6 +69,32 @@ export async function updateMaquinaria(id: string, data: Partial<Maquinaria>): P
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
     throw new Error(errorData.detail || 'Error al actualizar maquinaria');
+  }
+
+  const updated = await res.json();
+  window.dispatchEvent(
+    new CustomEvent('maquinaria:updated', { detail: updated }),
+  );
+  return updated;
+}
+
+export async function generateHistoricoForMachine(
+  machineryId: string,
+  days: number = 7,
+  everyMinutes: number = 10,
+) {
+  const url = `${API_BASE}/seed/historico/maquina/${encodeURIComponent(
+    machineryId,
+  )}?days=${encodeURIComponent(days)}&every_minutes=${encodeURIComponent(
+    everyMinutes,
+  )}`;
+
+  const res = await fetch(url, { method: 'POST' });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(
+      errorData.detail || 'Error generando histórico para la máquina',
+    );
   }
   return res.json();
 }

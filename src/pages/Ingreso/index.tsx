@@ -1,5 +1,12 @@
+// src/pages/ingreso/index.tsx
 import { Maquinaria, TIPOS_MAQUINARIA } from '@/constants/maquinaria';
-import { MaquinariaStore } from '@/services/maquinariaLocal';
+import {
+  createMaquinaria,
+  deleteMaquinaria,
+  generateHistoricoForMachine,
+  getMaquinaria,
+  updateMaquinaria,
+} from '@/services/apiMaquinaria';
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import type { ProColumns } from '@ant-design/pro-components';
 import {
@@ -22,7 +29,7 @@ const Ingreso: React.FC = () => {
   const cargarDatos = async () => {
     setLoading(true);
     try {
-      const data = await MaquinariaStore.list();
+      const data = await getMaquinaria();
       setMaquinas(data);
     } catch {
       message.error('Error al cargar maquinaria');
@@ -36,21 +43,56 @@ const Ingreso: React.FC = () => {
   }, []);
 
   const handleSubmit = async (values: any) => {
+    setLoading(true);
     try {
       if (editingId) {
-        await MaquinariaStore.update(editingId, values);
+        await updateMaquinaria(editingId, values);
         message.success('Máquina actualizada correctamente');
       } else {
-        await MaquinariaStore.create(values);
+        // Crear máquina en el backend
+        const created = await createMaquinaria(values);
         message.success('Máquina creada correctamente');
+
+        // Opción A (bloqueante): Esperar a que termine la generación de histórico para esta máquina
+        try {
+          await generateHistoricoForMachine(created.id, 7, 10);
+          message.success('Histórico (7 días) generado para la máquina');
+        } catch (seedErr: any) {
+          console.warn(
+            'No se pudo generar histórico para la máquina:',
+            seedErr,
+          );
+          message.warning(
+            'No se pudo generar lecturas históricas automáticamente',
+          );
+        }
+
+        // ----- Alternativa no bloqueante (descomenta si prefieres) -----
+        // // Opción B (no bloquear la UI): disparar en background y no await
+        // (async () => {
+        //   try {
+        //     await generateHistoricoForMachine(created.id, 7, 10);
+        //     console.log('Seed background completado para', created.id);
+        //   } catch (err) {
+        //     console.warn('Seed background falló:', err);
+        //   }
+        // })();
+        // message.info('Generando histórico en background...');
+        // ----------------------------------------------------------------
       }
+
       setModalVisible(false);
       setEditingId(null);
-      cargarDatos();
+
+      // Refrescar la lista de máquinas y lecturas
+      await cargarDatos();
+
       return true;
     } catch (error: any) {
       message.error(error.message || 'Error al guardar');
       return false;
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -61,7 +103,7 @@ const Ingreso: React.FC = () => {
 
   const handleDelete = async (id: string) => {
     try {
-      await MaquinariaStore.delete(id);
+      await deleteMaquinaria(id);
       message.success('Eliminado correctamente');
       cargarDatos();
     } catch {
@@ -173,13 +215,12 @@ const Ingreso: React.FC = () => {
         width={500}
         request={async () => {
           if (editingId) {
-            const maquina = await MaquinariaStore.get(editingId);
+            const maquina = maquinas.find((m) => m.id === editingId);
             return maquina || {};
           }
           return {};
         }}
       >
-        {/* Campos del formulario */}
         <ProFormText
           name="nombre"
           label="Nombre"

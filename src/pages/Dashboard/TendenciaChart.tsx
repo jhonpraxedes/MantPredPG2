@@ -1,43 +1,70 @@
-import React, { useState } from 'react';
-import { Select } from 'antd';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, CartesianGrid, ResponsiveContainer } from 'recharts';
-import DashboardPage from '.';
+// src/pages/dasboard/TendenciaChart.tsx
+import { Card, Empty } from 'antd';
+import React from 'react';
+import {
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 
-interface TendenciasChartProps {
-  rows: any[];
-}
+const TendenciasChart: React.FC<{ rows: any[] }> = ({ rows }) => {
+  // Preparar datos para gráfica (últimos 10 registros)
+  const chartData = React.useMemo(() => {
+    if (!rows || rows.length === 0) return [];
 
-export default function TendenciasChart({ rows }: TendenciasChartProps) {
-  const [metric, setMetric] = useState<'temperatura' | 'vibracion' | 'presion_aceite'>('temperatura');
+    return rows.slice(0, 10).map((row) => ({
+      name: row.nombre || row.numero_serie || row.id,
+      temperatura: row.temperatura,
+      vibracion: row.vibracion,
+      presion_aceite: row.presion_aceite,
+      timestamp: row.ts ? new Date(row.ts).toLocaleTimeString() : '—',
+    }));
+  }, [rows]);
 
-  const data = rows.map((r) => ({
-    nombre: r.nombre?.substring(0, 20) || 'Sin nombre',
-    valor: r[metric] ?? 0,
-  }));
-
-  const metricLabels = {
-    temperatura: 'Temperatura (°C)',
-    vibracion: 'Vibración (mm/s)',
-    presion_aceite: 'Presión Aceite (bar)',
-  };
+  if (chartData.length === 0) {
+    return (
+      <Card title="Tendencias de Métricas">
+        <Empty description="No hay datos para mostrar" />
+      </Card>
+    );
+  }
 
   return (
-    <div>
-      <Select value={metric} onChange={(v) => setMetric(v)} style={{ marginBottom: 16, width: 200 }}>
-        <Select.Option value="temperatura">Temperatura</Select.Option>
-        <Select.Option value="vibracion">Vibración</Select.Option>
-        <Select.Option value="presion_aceite">Presión Aceite</Select.Option>
-      </Select>
+    <Card title="Tendencias de Métricas" style={{ marginBottom: 16 }}>
       <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={data}>
+        <LineChart data={chartData}>
           <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="nombre" />
+          <XAxis dataKey="name" />
           <YAxis />
           <Tooltip />
           <Legend />
-          <Bar dataKey="valor" fill="#1890ff" name={metricLabels[metric]} />
-        </BarChart>
+          <Line
+            type="monotone"
+            dataKey="temperatura"
+            stroke="#8884d8"
+            name="Temperatura (°C)"
+          />
+          <Line
+            type="monotone"
+            dataKey="vibracion"
+            stroke="#82ca9d"
+            name="Vibración (mm/s)"
+          />
+          <Line
+            type="monotone"
+            dataKey="presion_aceite"
+            stroke="#ffc658"
+            name="Presión Aceite (bar)"
+          />
+        </LineChart>
       </ResponsiveContainer>
-    </div>
+    </Card>
   );
-}
+};
+
+export default TendenciasChart;

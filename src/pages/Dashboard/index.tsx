@@ -1,36 +1,65 @@
+import { Maquinaria } from '@/constants/maquinaria';
+import {
+  getLatest,
+  getMaquinaria,
+  Lectura as LecturaDTO,
+  Maquina as MaquinaDTO,
+} from '@/services/apiBackend';
+import {
+  CheckCircleOutlined,
+  DashboardOutlined,
+  ExclamationCircleOutlined,
+  WarningOutlined,
+} from '@ant-design/icons';
+import {
+  PageContainer,
+  ProColumns,
+  ProTable,
+} from '@ant-design/pro-components';
+import {
+  Alert,
+  Button,
+  Card,
+  Col,
+  message,
+  Row,
+  Space,
+  Statistic,
+  Tag,
+} from 'antd';
 import React, { useEffect, useMemo, useState } from 'react';
-import { PageContainer, ProColumns, ProTable } from '@ant-design/pro-components';
-import { Tag, Space, Button, message, Card, Row, Col, Alert, Statistic } from 'antd';
-import { WarningOutlined, CheckCircleOutlined, ExclamationCircleOutlined, DashboardOutlined } from '@ant-design/icons';
 import HistorialModal from './HistoriaModal';
 import TendenciasChart from './TendenciaChart';
-import { 
-  getMaquinaria, 
-  getLatest, 
-  Maquina as MaquinaDTO, 
-  Lectura as LecturaDTO 
-} from '@/services/apiBackend';
 
 type Estado = 'OK' | 'ALERTA' | 'CRITICO';
 
-type RowItem = MaquinaDTO & LecturaDTO & { id: string; estadoCalculado: Estado };
+type RowItem = MaquinaDTO &
+  Partial<LecturaDTO> & {
+    id: string;
+    estadoCalculado: Estado;
+    lectura_id?: number;
+  };
 
-// 🔧 Función para evaluar estado basado en métricas
-function evaluarEstado(temperatura?: number | null, vibracion?: number | null, presion_aceite?: number | null): Estado {
+// Alineado con la lógica del backend (presión en bar, vibración en mm/s, temperatura en °C)
+function evaluarEstado(
+  temperatura?: number | null,
+  vibracion?: number | null,
+  presion_aceite?: number | null,
+): Estado {
   const temp = temperatura ?? 0;
   const vib = vibracion ?? 0;
   const pres = presion_aceite ?? 0;
-  
-  // Evaluar críticos
-  if (vib > 4.5 || temp > 120 || temp < 60 || pres < 150) {
-    return 'CRITICO';
-  }
-  
-  // Evaluar alertas
-  if (vib > 2.5 || temp > 100 || temp < 80 || pres < 200 || pres > 350) {
-    return 'ALERTA';
-  }
-  
+
+  // Criticos
+  if (vib > 4.5) return 'CRITICO';
+  if (temp > 120) return 'CRITICO';
+  if (pres < 1.5) return 'CRITICO';
+
+  // Alertas
+  if (vib > 2.5) return 'ALERTA';
+  if (temp > 100 || temp < 80) return 'ALERTA';
+  if (pres < 2.5 || pres > 5.5) return 'ALERTA';
+
   return 'OK';
 }
 
@@ -52,10 +81,50 @@ const DashboardPage: React.FC = () => {
   const [lecturas, setLecturas] = useState<LecturaDTO[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Estados para el modal
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<any>(null);
 
+  // Escuchar eventos globales de creación/actualización/eliminación de máquinas
+  useEffect(() => {
+    const onCreated = (e: Event) => {
+      const maquina = (e as CustomEvent).detail as Maquinaria;
+      setMaquinas((prev) => [maquina as MaquinaDTO, ...prev]);
+      // refetch lecturas para incluir máquina nueva si tiene lecturas
+      getLatest().then(setLecturas).catch(console.error);
+    };
+    const onUpdated = (e: Event) => {
+      const updated = (e as CustomEvent).detail as MaquinaDTO;
+      setMaquinas((prev) =>
+        prev.map((m) => (m.id === updated.id ? updated : m)),
+      );
+    };
+    const onDeleted = (e: Event) => {
+      const id = (e as CustomEvent).detail as string;
+      setMaquinas((prev) => prev.filter((m) => m.id !== id));
+      setLecturas((prev) => prev.filter((l) => l.maquinaria_id !== id));
+    };
+
+    window.addEventListener('maquinaria:created', onCreated as EventListener);
+    window.addEventListener('maquinaria:updated', onUpdated as EventListener);
+    window.addEventListener('maquinaria:deleted', onDeleted as EventListener);
+
+    return () => {
+      window.removeEventListener(
+        'maquinaria:created',
+        onCreated as EventListener,
+      );
+      window.removeEventListener(
+        'maquinaria:updated',
+        onUpdated as EventListener,
+      );
+      window.removeEventListener(
+        'maquinaria:deleted',
+        onDeleted as EventListener,
+      );
+    };
+  }, []);
+
+  // rows sin hooks dentro
   const rows: RowItem[] = useMemo(() => {
     const byId = new Map<string, LecturaDTO>();
     lecturas.forEach((l) => {
@@ -64,43 +133,30 @@ const DashboardPage: React.FC = () => {
 
     return maquinas.map((m) => {
       const l = byId.get(m.id);
-      
-      // 🔧 Calcular estado si no existe
-      const estadoCalculado = l?.estado 
+      const estadoCalculado = l?.estado
         ? (l.estado.toUpperCase() as Estado)
         : evaluarEstado(l?.temperatura, l?.vibracion, l?.presion_aceite);
-      
+
       return {
         ...m,
-        ...l,
+        ...(l || {}),
         id: m.id,
+        lectura_id: l?.id,
         estadoCalculado,
       } as RowItem;
     });
   }, [maquinas, lecturas]);
 
-  // 🔧 Calcular KPIs basados en estados calculados
   const kpis = useMemo(() => {
-    let ok = 0, alerta = 0, critico = 0;
-    
+    let ok = 0,
+      alerta = 0,
+      critico = 0;
     rows.forEach((r) => {
-      const estado = r.estadoCalculado;
-      
-      if (estado === 'OK') {
-        ok++;
-      } else if (estado === 'ALERTA') {
-        alerta++;
-      } else if (estado === 'CRITICO') {
-        critico++;
-      }
+      if (r.estadoCalculado === 'OK') ok++;
+      else if (r.estadoCalculado === 'ALERTA') alerta++;
+      else if (r.estadoCalculado === 'CRITICO') critico++;
     });
-    
-    return { 
-      total: rows.length, 
-      ok, 
-      alerta, 
-      critico 
-    };
+    return { total: rows.length, ok, alerta, critico };
   }, [rows]);
 
   useEffect(() => {
@@ -109,10 +165,7 @@ const DashboardPage: React.FC = () => {
     async function load() {
       try {
         setLoading(true);
-        const [m, l] = await Promise.all([
-          getMaquinaria(),
-          getLatest(),
-        ]);
+        const [m, l] = await Promise.all([getMaquinaria(), getLatest()]);
         if (!mounted) return;
         setMaquinas(m);
         setLecturas(l);
@@ -125,7 +178,6 @@ const DashboardPage: React.FC = () => {
     }
 
     load();
-
     const interval = setInterval(() => {
       if (mounted) load();
     }, 5000);
@@ -142,7 +194,9 @@ const DashboardPage: React.FC = () => {
       dataIndex: 'nombre',
       width: 240,
       fixed: 'left',
-      render: (_dom: React.ReactNode, record: RowItem) => <b>{record.nombre}</b>,
+      render: (_dom: React.ReactNode, record: RowItem) => (
+        <b>{record.nombre}</b>
+      ),
     },
     {
       title: 'Tipo',
@@ -164,7 +218,8 @@ const DashboardPage: React.FC = () => {
       title: 'N° Serie',
       dataIndex: 'numero_serie',
       width: 180,
-      render: (_dom: React.ReactNode, record: RowItem) => record.numero_serie ?? '—',
+      render: (_dom: React.ReactNode, record: RowItem) =>
+        record.numero_serie ?? '—',
     },
     {
       title: 'Motor',
@@ -176,27 +231,38 @@ const DashboardPage: React.FC = () => {
       title: 'Temp (°C)',
       dataIndex: 'temperatura',
       width: 120,
-      render: (_dom: React.ReactNode, record: RowItem) => (record.temperatura !== null && record.temperatura !== undefined ? record.temperatura : '—'),
+      render: (_dom: React.ReactNode, record: RowItem) =>
+        record.temperatura !== null && record.temperatura !== undefined
+          ? record.temperatura
+          : '—',
     },
     {
       title: 'Vibración (mm/s)',
       dataIndex: 'vibracion',
       width: 150,
-      render: (_dom: React.ReactNode, record: RowItem) => (record.vibracion !== null && record.vibracion !== undefined ? record.vibracion : '—'),
+      render: (_dom: React.ReactNode, record: RowItem) =>
+        record.vibracion !== null && record.vibracion !== undefined
+          ? record.vibracion
+          : '—',
     },
     {
       title: 'Aceite (bar)',
       dataIndex: 'presion_aceite',
       width: 130,
-      render: (_dom: React.ReactNode, record: RowItem) => (record.presion_aceite !== null && record.presion_aceite !== undefined ? record.presion_aceite : '—'),
+      render: (_dom: React.ReactNode, record: RowItem) =>
+        record.presion_aceite !== null && record.presion_aceite !== undefined
+          ? record.presion_aceite
+          : '—',
     },
     {
       title: 'Estado',
       dataIndex: 'estadoCalculado',
       width: 130,
-      render: (_dom: React.ReactNode, record: RowItem) => tagEstado(record.estadoCalculado),
+      render: (_dom: React.ReactNode, record: RowItem) =>
+        tagEstado(record.estadoCalculado),
       filters: true,
-      onFilter: (value: any, record: RowItem) => record.estadoCalculado === (value as Estado),
+      onFilter: (value: any, record: RowItem) =>
+        record.estadoCalculado === (value as Estado),
       valueEnum: {
         OK: { text: 'OK' },
         ALERTA: { text: 'ALERTA' },
@@ -217,7 +283,8 @@ const DashboardPage: React.FC = () => {
       title: 'Última lectura',
       dataIndex: 'ts',
       width: 180,
-      render: (_dom: React.ReactNode, record: RowItem) => (record.ts ? new Date(record.ts).toLocaleString() : '—'),
+      render: (_dom: React.ReactNode, record: RowItem) =>
+        record.ts ? new Date(record.ts).toLocaleString() : '—',
     },
     {
       title: 'Acciones',
@@ -257,10 +324,11 @@ const DashboardPage: React.FC = () => {
         subTitle: 'Estado en tiempo real (backend)',
       }}
     >
-      {/* Banner de alerta si hay máquinas críticas */}
       {kpis.critico > 0 && (
         <Alert
-          message={`⚠️ ${kpis.critico} máquina${kpis.critico > 1 ? 's' : ''} en estado CRÍTICO`}
+          message={`⚠️ ${kpis.critico} máquina${
+            kpis.critico > 1 ? 's' : ''
+          } en estado CRÍTICO`}
           description="Requiere atención inmediata"
           type="error"
           showIcon
@@ -269,7 +337,6 @@ const DashboardPage: React.FC = () => {
         />
       )}
 
-      {/* Tarjetas KPI */}
       <Row gutter={16} style={{ marginBottom: 16 }}>
         <Col xs={24} sm={12} md={6}>
           <Card>
@@ -313,12 +380,10 @@ const DashboardPage: React.FC = () => {
         </Col>
       </Row>
 
-      {/* Gráfica de tendencias */}
       <Card title="Tendencias de Métricas" style={{ marginBottom: 16 }}>
         <TendenciasChart rows={rows} />
       </Card>
 
-      {/* Tabla de maquinaria */}
       <ProTable<RowItem>
         columns={columns}
         dataSource={rows}
@@ -367,7 +432,11 @@ const DashboardPage: React.FC = () => {
           }
         }}
       />
-      <HistorialModal open={open} onClose={() => setOpen(false)} row={selected} />
+      <HistorialModal
+        open={open}
+        onClose={() => setOpen(false)}
+        row={selected}
+      />
     </PageContainer>
   );
 };

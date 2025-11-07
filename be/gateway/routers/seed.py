@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 import random
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Path
 from sqlalchemy import select
 
 from ..db import async_session
@@ -98,6 +98,73 @@ async def seed_historico(
         "ok": True,
         "inserted": total_inserted,
         "machines": len(maquinas),
+        "range": {"from": start.isoformat(), "to": end.isoformat()},
+        "step_minutes": every_minutes,
+    }
+
+@router.post("/historico/maquina/{maquinaria_id}")
+async def seed_historico_maquina(
+    maquinaria_id: str = Path(..., description="ID de la maquinaria"),
+    days: int = Query(7, ge=1, le=60, description="Días hacia atrás"),
+    every_minutes: int = Query(10, ge=1, le=60, description="Frecuencia de registros"),
+    base_temp: float = 90.0,
+    base_vib: float = 2.0,
+    base_pres: float = 3.5,
+    temp_noise: float = 15.0,
+    vib_noise: float = 1.5,
+    pres_noise: float = 1.0,
+):
+    """
+    Genera histórico sintético solo para la máquina indicada.
+    """
+    start = datetime.now(timezone.utc) - timedelta(days=days)
+    end = datetime.now(timezone.utc)
+    total_inserted = 0
+
+    async with async_session() as session:
+        # obtener la máquina
+        result = await session.execute(select(Maquinaria).where(Maquinaria.id == maquinaria_id))
+        maquina = result.scalar_one_or_none()
+        if not maquina:
+            raise HTTPException(status_code=404, detail="Maquinaria no encontrada")
+
+        t = start
+        # Commit periódicos para no consumir demasiada memoria si hay muchas filas
+        batch = 0
+        while t <= end:
+            temp = clamp(base_temp + random.uniform(-temp_noise, temp_noise), 60, 140)
+            vib = clamp(base_vib + random.uniform(-vib_noise, vib_noise), 0.2, 8.0)
+            pres = clamp(base_pres + random.uniform(-pres_noise, pres_noise), 0.5, 7.0)
+
+            estado, motivo = evaluar_estado(temp, vib, pres)
+
+            session.add(Lectura(
+                maquinaria_id=maquina.id,
+                numero_serie=maquina.numero_serie,
+                temperatura=round(temp, 1),
+                vibracion=round(vib, 1),
+                presion_aceite=round(pres, 1),
+                ts=t,
+                estado=estado,
+                motivo=motivo
+            ))
+            total_inserted += 1
+            batch += 1
+
+            t += timedelta(minutes=every_minutes)
+
+            # Hacemos commit cada 200 inserciones para evitar uso excesivo de memoria
+            if batch >= 200:
+                await session.commit()
+                batch = 0
+
+        # commit final
+        await session.commit()
+
+    return {
+        "ok": True,
+        "inserted": total_inserted,
+        "machine_id": maquinaria_id,
         "range": {"from": start.isoformat(), "to": end.isoformat()},
         "step_minutes": every_minutes,
     }
