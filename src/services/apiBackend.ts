@@ -10,17 +10,20 @@ let API_BASE =
 
 // Si estamos en el navegador y no estamos en localhost, y la base aún apunta a localhost,
 // forzamos el fallback de producción para evitar llamadas al localhost desde Netlify.
-if (typeof window !== 'undefined') {
-  const hostname = window.location.hostname;
-  const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
-  if (!isLocalhost && API_BASE.includes('127.0.0.1')) {
-    API_BASE = FALLBACK_PROD;
+function getEffectiveBase() {
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+    if (!isLocalhost && API_BASE.includes('127.0.0.1')) {
+      return FALLBACK_PROD;
+    }
   }
+  return API_BASE;
 }
 
 // Log temporal para verificar en producción que el bundle usa la URL correcta.
 // Quitar este console.log una vez verificado.
-console.log('API_BASE usado por frontend ->', API_BASE);
+console.log('API_BASE usado por frontend ->', getEffectiveBase());
 
 export type Estado = 'OK' | 'ALERTA' | 'CRITICO';
 
@@ -45,71 +48,103 @@ export interface Lectura {
   motivo: string | null;
 }
 
+/** Helper para parsear respuesta y detalle de error */
+async function parseResponse(res: Response) {
+  const text = await res.text().catch(() => '');
+  let body: any = {};
+  try {
+    body = text ? JSON.parse(text) : {};
+  } catch {
+    body = { detail: text };
+  }
+  return { ok: res.ok, status: res.status, body };
+}
+
 /** Maquinaria */
 export async function getMaquinaria(): Promise<Maquina[]> {
-  const res = await fetch(`${API_BASE}/maquinaria`, { cache: 'no-store' });
-  if (!res.ok) throw new Error('Error /maquinaria');
+  const BASE = getEffectiveBase();
+  const res = await fetch(`${BASE}/maquinaria`, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`Error /maquinaria (${res.status})`);
   return res.json();
 }
 
 export async function createMaquinaria(
   data: Omit<Maquina, 'id'>,
 ): Promise<Maquina> {
-  const res = await fetch(`${API_BASE}/maquinaria`, {
+  const BASE = getEffectiveBase();
+  const res = await fetch(`${BASE}/maquinaria`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({}));
-    throw new Error(error.detail || 'Error POST /maquinaria');
+
+  const parsed = await parseResponse(res);
+  if (!parsed.ok) {
+    throw new Error(
+      parsed.body?.detail || `Error POST /maquinaria (${parsed.status})`,
+    );
   }
-  return res.json();
+  return parsed.body as Maquina;
 }
 
 export async function updateMaquinaria(
   id: string,
   data: Partial<Maquina>,
 ): Promise<Maquina> {
-  const res = await fetch(`${API_BASE}/maquinaria/${id}`, {
+  const BASE = getEffectiveBase();
+  const res = await fetch(`${BASE}/maquinaria/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({}));
-    throw new Error(error.detail || 'Error PUT /maquinaria');
+
+  const parsed = await parseResponse(res);
+  if (!parsed.ok) {
+    throw new Error(
+      parsed.body?.detail || `Error PUT /maquinaria (${parsed.status})`,
+    );
   }
-  return res.json();
+  return parsed.body as Maquina;
 }
 
 export async function deleteMaquinaria(id: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/maquinaria/${id}`, {
+  const BASE = getEffectiveBase();
+  const res = await fetch(`${BASE}/maquinaria/${id}`, {
     method: 'DELETE',
   });
-  if (!res.ok) {
-    const error = await res.json().catch(() => ({}));
-    throw new Error(error.detail || 'Error DELETE /maquinaria');
+
+  const parsed = await parseResponse(res);
+  if (!parsed.ok) {
+    throw new Error(
+      parsed.body?.detail || `Error DELETE /maquinaria (${parsed.status})`,
+    );
   }
 }
 
 /** Lecturas */
 export async function getLatest(): Promise<Lectura[]> {
-  const res = await fetch(`${API_BASE}/lecturas/latest`, { cache: 'no-store' });
-  if (!res.ok) throw new Error('Error /lecturas/latest');
+  const BASE = getEffectiveBase();
+  const res = await fetch(`${BASE}/lecturas/latest`, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`Error /lecturas/latest (${res.status})`);
   return res.json();
 }
 
 export async function createLectura(
   data: Omit<Lectura, 'id' | 'estado' | 'motivo'>,
 ): Promise<Lectura> {
-  const res = await fetch(`${API_BASE}/lecturas`, {
+  const BASE = getEffectiveBase();
+  const res = await fetch(`${BASE}/lecturas`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error('Error POST /lecturas');
-  return res.json();
+
+  const parsed = await parseResponse(res);
+  if (!parsed.ok)
+    throw new Error(
+      parsed.body?.detail || `Error POST /lecturas (${parsed.status})`,
+    );
+  return parsed.body as Lectura;
 }
 
 /** Histórico */
@@ -117,10 +152,11 @@ export async function getHistory(
   maquinaria_id: string,
   limit: number = 100,
 ): Promise<Lectura[]> {
+  const BASE = getEffectiveBase();
   const res = await fetch(
-    `${API_BASE}/lecturas/maquina/${maquinaria_id}?limit=${limit}`,
+    `${BASE}/lecturas/maquina/${maquinaria_id}?limit=${limit}`,
   );
-  if (!res.ok) throw new Error('Error /lecturas/maquina');
+  if (!res.ok) throw new Error(`Error /lecturas/maquina (${res.status})`);
   return res.json();
 }
 
@@ -144,9 +180,10 @@ export async function getPredict(
 
 /** Resumen */
 export async function getResumen() {
-  const res = await fetch(`${API_BASE}/lecturas/resumen`, {
+  const BASE = getEffectiveBase();
+  const res = await fetch(`${BASE}/lecturas/resumen`, {
     cache: 'no-store',
   });
-  if (!res.ok) throw new Error('Error /lecturas/resumen');
+  if (!res.ok) throw new Error(`Error /lecturas/resumen (${res.status})`);
   return res.json();
 }
