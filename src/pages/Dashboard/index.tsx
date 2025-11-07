@@ -1,27 +1,49 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { PageContainer, ProColumns, ProTable } from '@ant-design/pro-components';
-import { Tag, Space, Button, message } from 'antd';
-import {
-  fetchMaquinaria,
-  fetchLecturas,
-  MaquinaDTO,
-  LecturaDTO,
-} from '@/services/dashboardLocal';
-//import '@/styles/global.css';
+import { Tag, Space, Button, message, Card, Row, Col, Alert, Statistic } from 'antd';
+import { WarningOutlined, CheckCircleOutlined, ExclamationCircleOutlined, DashboardOutlined } from '@ant-design/icons';
+import HistorialModal from './HistoriaModal';
+import TendenciasChart from './TendenciaChart';
+import { 
+  getMaquinaria, 
+  getLatest, 
+  Maquina as MaquinaDTO, 
+  Lectura as LecturaDTO 
+} from '@/services/apiBackend';
 
 type Estado = 'OK' | 'ALERTA' | 'CRITICO';
 
-type RowItem = MaquinaDTO & LecturaDTO & { id: string };
+type RowItem = MaquinaDTO & LecturaDTO & { id: string; estadoCalculado: Estado };
 
-const tagEstado = (e?: Estado) => {
+// 🔧 Función para evaluar estado basado en métricas
+function evaluarEstado(temperatura?: number | null, vibracion?: number | null, presion_aceite?: number | null): Estado {
+  const temp = temperatura ?? 0;
+  const vib = vibracion ?? 0;
+  const pres = presion_aceite ?? 0;
+  
+  // Evaluar críticos
+  if (vib > 4.5 || temp > 120 || temp < 60 || pres < 150) {
+    return 'CRITICO';
+  }
+  
+  // Evaluar alertas
+  if (vib > 2.5 || temp > 100 || temp < 80 || pres < 200 || pres > 350) {
+    return 'ALERTA';
+  }
+  
+  return 'OK';
+}
+
+const tagEstado = (e?: Estado | null) => {
   switch (e) {
     case 'CRITICO':
       return <Tag color="red">CRÍTICO</Tag>;
     case 'ALERTA':
       return <Tag color="orange">ALERTA</Tag>;
     case 'OK':
-    default:
       return <Tag color="green">OK</Tag>;
+    default:
+      return <Tag color="gray">—</Tag>;
   }
 };
 
@@ -29,6 +51,10 @@ const DashboardPage: React.FC = () => {
   const [maquinas, setMaquinas] = useState<MaquinaDTO[]>([]);
   const [lecturas, setLecturas] = useState<LecturaDTO[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // Estados para el modal
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<any>(null);
 
   const rows: RowItem[] = useMemo(() => {
     const byId = new Map<string, LecturaDTO>();
@@ -38,28 +64,54 @@ const DashboardPage: React.FC = () => {
 
     return maquinas.map((m) => {
       const l = byId.get(m.id);
+      
+      // 🔧 Calcular estado si no existe
+      const estadoCalculado = l?.estado 
+        ? (l.estado.toUpperCase() as Estado)
+        : evaluarEstado(l?.temperatura, l?.vibracion, l?.presion_aceite);
+      
       return {
         ...m,
         ...l,
         id: m.id,
+        estadoCalculado,
       } as RowItem;
     });
   }, [maquinas, lecturas]);
 
+  // 🔧 Calcular KPIs basados en estados calculados
+  const kpis = useMemo(() => {
+    let ok = 0, alerta = 0, critico = 0;
+    
+    rows.forEach((r) => {
+      const estado = r.estadoCalculado;
+      
+      if (estado === 'OK') {
+        ok++;
+      } else if (estado === 'ALERTA') {
+        alerta++;
+      } else if (estado === 'CRITICO') {
+        critico++;
+      }
+    });
+    
+    return { 
+      total: rows.length, 
+      ok, 
+      alerta, 
+      critico 
+    };
+  }, [rows]);
+
   useEffect(() => {
     let mounted = true;
-    const url = new URL(window.location.href);
-    const seed = url.searchParams.get('seed') ?? 'demo-1';
-    const simulate = true;
-    const simulateMissingOnly = false;
 
-    async function load(tick?: number) {
+    async function load() {
       try {
         setLoading(true);
-        const usedTick = typeof tick === 'number' ? tick : Math.floor(Date.now() / 5000);
         const [m, l] = await Promise.all([
-          fetchMaquinaria(),
-          fetchLecturas(simulate, simulateMissingOnly, seed, usedTick),
+          getMaquinaria(),
+          getLatest(),
         ]);
         if (!mounted) return;
         setMaquinas(m);
@@ -75,8 +127,7 @@ const DashboardPage: React.FC = () => {
     load();
 
     const interval = setInterval(() => {
-      const tick = Math.floor(Date.now() / 5000);
-      load(tick);
+      if (mounted) load();
     }, 5000);
 
     return () => {
@@ -125,27 +176,27 @@ const DashboardPage: React.FC = () => {
       title: 'Temp (°C)',
       dataIndex: 'temperatura',
       width: 120,
-      render: (_dom: React.ReactNode, record: RowItem) => (record.temperatura !== null ? record.temperatura : '—'),
+      render: (_dom: React.ReactNode, record: RowItem) => (record.temperatura !== null && record.temperatura !== undefined ? record.temperatura : '—'),
     },
     {
       title: 'Vibración (mm/s)',
       dataIndex: 'vibracion',
       width: 150,
-      render: (_dom: React.ReactNode, record: RowItem) => (record.vibracion !== null ? record.vibracion : '—'),
+      render: (_dom: React.ReactNode, record: RowItem) => (record.vibracion !== null && record.vibracion !== undefined ? record.vibracion : '—'),
     },
     {
       title: 'Aceite (bar)',
       dataIndex: 'presion_aceite',
       width: 130,
-      render: (_dom: React.ReactNode, record: RowItem) => (record.presion_aceite !== null ? record.presion_aceite : '—'),
+      render: (_dom: React.ReactNode, record: RowItem) => (record.presion_aceite !== null && record.presion_aceite !== undefined ? record.presion_aceite : '—'),
     },
     {
       title: 'Estado',
-      dataIndex: 'estado',
+      dataIndex: 'estadoCalculado',
       width: 130,
-      render: (_dom: React.ReactNode, record: RowItem) => tagEstado(record.estado as Estado),
+      render: (_dom: React.ReactNode, record: RowItem) => tagEstado(record.estadoCalculado),
       filters: true,
-      onFilter: (value: any, record: RowItem) => record.estado === (value as Estado),
+      onFilter: (value: any, record: RowItem) => record.estadoCalculado === (value as Estado),
       valueEnum: {
         OK: { text: 'OK' },
         ALERTA: { text: 'ALERTA' },
@@ -175,10 +226,23 @@ const DashboardPage: React.FC = () => {
       fixed: 'right',
       render: (_dom: React.ReactNode, record: RowItem) => (
         <Space>
-          <Button type="link" onClick={() => message.info(`Ver detalles ${record.nombre}`)}>
-            Ver
-          </Button>
-          <Button type="link" onClick={() => message.info(`Historial ${record.nombre}`)}>
+          <Button
+            type="link"
+            onClick={() => {
+              setSelected({
+                maquinaria_id: record.id,
+                nombre: record.nombre,
+                numero_serie: record.numero_serie,
+                temperatura: record.temperatura,
+                vibracion: record.vibracion,
+                presion_aceite: record.presion_aceite,
+                ts: record.ts,
+                estado: record.estadoCalculado,
+                motivo: record.motivo,
+              });
+              setOpen(true);
+            }}
+          >
             Historial
           </Button>
         </Space>
@@ -190,9 +254,71 @@ const DashboardPage: React.FC = () => {
     <PageContainer
       header={{
         title: 'Dashboard de Maquinaria',
-        subTitle: 'Estado en tiempo real (simulado determinista con seed)',
+        subTitle: 'Estado en tiempo real (backend)',
       }}
     >
+      {/* Banner de alerta si hay máquinas críticas */}
+      {kpis.critico > 0 && (
+        <Alert
+          message={`⚠️ ${kpis.critico} máquina${kpis.critico > 1 ? 's' : ''} en estado CRÍTICO`}
+          description="Requiere atención inmediata"
+          type="error"
+          showIcon
+          icon={<WarningOutlined />}
+          style={{ marginBottom: 16 }}
+        />
+      )}
+
+      {/* Tarjetas KPI */}
+      <Row gutter={16} style={{ marginBottom: 16 }}>
+        <Col xs={24} sm={12} md={6}>
+          <Card>
+            <Statistic
+              title="Total Máquinas"
+              value={kpis.total}
+              prefix={<DashboardOutlined />}
+              valueStyle={{ color: '#1890ff' }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} md={6}>
+          <Card>
+            <Statistic
+              title="OK"
+              value={kpis.ok}
+              prefix={<CheckCircleOutlined />}
+              valueStyle={{ color: '#52c41a' }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} md={6}>
+          <Card>
+            <Statistic
+              title="ALERTA"
+              value={kpis.alerta}
+              prefix={<ExclamationCircleOutlined />}
+              valueStyle={{ color: '#faad14' }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={12} md={6}>
+          <Card>
+            <Statistic
+              title="CRÍTICO"
+              value={kpis.critico}
+              prefix={<WarningOutlined />}
+              valueStyle={{ color: '#f5222d' }}
+            />
+          </Card>
+        </Col>
+      </Row>
+
+      {/* Gráfica de tendencias */}
+      <Card title="Tendencias de Métricas" style={{ marginBottom: 16 }}>
+        <TendenciasChart rows={rows} />
+      </Card>
+
+      {/* Tabla de maquinaria */}
       <ProTable<RowItem>
         columns={columns}
         dataSource={rows}
@@ -211,17 +337,13 @@ const DashboardPage: React.FC = () => {
               onClick={async () => {
                 setLoading(true);
                 try {
-                  const url = new URL(window.location.href);
-                  const seed = url.searchParams.get('seed') ?? 'demo-1';
-                  const simulate = true;
-                  const simulateMissingOnly = false;
-                  const tick = Math.floor(Date.now() / 5000);
                   const [m, l] = await Promise.all([
-                    fetchMaquinaria(),
-                    fetchLecturas(simulate, simulateMissingOnly, seed, tick),
+                    getMaquinaria(),
+                    getLatest(),
                   ]);
                   setMaquinas(m);
                   setLecturas(l);
+                  message.success('Datos actualizados');
                 } catch (err) {
                   message.error('Error al refrescar');
                 } finally {
@@ -229,12 +351,12 @@ const DashboardPage: React.FC = () => {
                 }
               }}
             >
-              Forzar refresh
+              Refrescar
             </Button>
           </Space>,
         ]}
         rowClassName={(record: RowItem) => {
-          switch (record.estado) {
+          switch (record.estadoCalculado) {
             case 'CRITICO':
               return 'row-critical';
             case 'ALERTA':
@@ -245,6 +367,7 @@ const DashboardPage: React.FC = () => {
           }
         }}
       />
+      <HistorialModal open={open} onClose={() => setOpen(false)} row={selected} />
     </PageContainer>
   );
 };
