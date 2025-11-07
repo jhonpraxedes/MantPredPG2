@@ -45,6 +45,9 @@ importers:
       '@types/react-dom':
         specifier: ^18.0.11
         version: 18.3.7(@types/react@18.3.25)
+      '@types/recharts':
+        specifier: ^2.0.1
+        version: 2.0.1(@types/react-dom@18.3.7(@types/react@18.3.25))(@types/react@18.3.25)(react-dom@18.3.1(react@18.3.1))(react-is@18.3.1)(react@18.3.1)(redux@5.0.1)
       husky:
         specifier: ^9
         version: 9.1.7
@@ -1545,6 +1548,10 @@ packages:
 
   '@types/react@18.3.25':
     resolution: {integrity: sha512-oSVZmGtDPmRZtVDqvdKUi/qgCsWp5IDY29wp8na8Bj4B3cc99hfNzvNhlMkVVxctkAOGUA3Km7MMpBHAnWfcIA==, tarball: https://registry.npmjs.org/@types/react/-/react-18.3.25.tgz}
+
+  '@types/recharts@2.0.1':
+    resolution: {integrity: sha512-/cFs7oiafzByUwBSWA1IzE6FW+ppPwQAWsDTadSgVOwzveY9MESpyLHyyHY0SfPPKLW4+4qVNYHPXd0rFiC8vg==, tarball: https://registry.npmjs.org/@types/recharts/-/recharts-2.0.1.tgz}
+    deprecated: This is a stub types definition. recharts provides its own type definitions, so you do not need this installed.
 
   '@types/resolve@1.20.6':
     resolution: {integrity: sha512-A4STmOXPhMUtHH+S6ymgE2GiBSMqf4oTvcQZMcHzokuTLVYzXTB8ttjcgxOVaAp2lGwEdzZ0J+cRbbeevQj1UQ==, tarball: https://registry.npmjs.org/@types/resolve/-/resolve-1.20.6.tgz}
@@ -8714,6 +8721,18 @@ snapshots:
     dependencies:
       '@types/prop-types': 15.7.15
       csstype: 3.1.3
+
+  '@types/recharts@2.0.1(@types/react-dom@18.3.7(@types/react@18.3.25))(@types/react@18.3.25)(react-dom@18.3.1(react@18.3.1))(react-is@18.3.1)(react@18.3.1)(redux@5.0.1)':
+    dependencies:
+      recharts: 3.3.0(@types/react-dom@18.3.7(@types/react@18.3.25))(@types/react@18.3.25)(react-dom@18.3.1(react@18.3.1))(react-is@18.3.1)(react@18.3.1)(redux@5.0.1)
+    transitivePeerDependencies:
+      - '@types/react'
+      - '@types/react-dom'
+      - react
+      - react-dom
+      - react-is
+      - react-native
+      - redux
 
   '@types/resolve@1.20.6': {}
 
