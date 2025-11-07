@@ -1,0 +1,15 @@
+# netlify.toml
+[build]
+  base = "src"
+  command = "pnpm install --prefer-offline && pnpm build"
+  publish = "src/dist"
+
+# Si quieres que Netlify use pnpm explícitamente (puedes también setearlo desde UI)
+[build.environment]
+  NODE_VERSION = "18"
+  NETLIFY_USE_PNPM = "true"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
