@@ -1,8 +1,8 @@
 # netlify.toml
 [build]
-  base = "src"
+  base = ""                                      # raíz del repo
   command = "pnpm install --prefer-offline && pnpm build"
-  publish = "dist"
+  publish = "dist"                                # dist en raíz
 
 [build.environment]
   NODE_VERSION = "18"
