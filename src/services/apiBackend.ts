@@ -1,10 +1,26 @@
 // src/services/apiBackend.ts
-// Lectura segura de la variable de entorno para distintos entornos/bundlers
-const API_BASE =
+// Fallback seguro para producción
+const FALLBACK_PROD = 'https://mantpredpg2-production.up.railway.app';
+
+let API_BASE =
   (import.meta as any)?.env?.VITE_API_BASE_URL ||
   (process as any)?.env?.VITE_API_BASE_URL ||
   (typeof window !== 'undefined' && (window as any).__env?.VITE_API_BASE_URL) ||
   'http://127.0.0.1:8001';
+
+// Si estamos en el navegador y no estamos en localhost, y la base aún apunta a localhost,
+// forzamos el fallback de producción para evitar llamadas al localhost desde Netlify.
+if (typeof window !== 'undefined') {
+  const hostname = window.location.hostname;
+  const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+  if (!isLocalhost && API_BASE.includes('127.0.0.1')) {
+    API_BASE = FALLBACK_PROD;
+  }
+}
+
+// Log temporal para verificar en producción que el bundle usa la URL correcta.
+// Quitar este console.log una vez verificado.
+console.log('API_BASE usado por frontend ->', API_BASE);
 
 export type Estado = 'OK' | 'ALERTA' | 'CRITICO';
 
