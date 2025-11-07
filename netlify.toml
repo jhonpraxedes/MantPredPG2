@@ -2,9 +2,8 @@
 [build]
   base = "src"
   command = "pnpm install --prefer-offline && pnpm build"
-  publish = "src/dist"
+  publish = "dist"
 
-# Si quieres que Netlify use pnpm explícitamente (puedes también setearlo desde UI)
 [build.environment]
   NODE_VERSION = "18"
   NETLIFY_USE_PNPM = "true"
