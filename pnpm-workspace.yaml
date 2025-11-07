@@ -3,3 +3,7 @@ ignoredBuiltDependencies:
   - core-js-pure
   - es5-ext
   - esbuild
+packages:
+  - 'src'
+  - 'be'
+  - 'packages/*'
