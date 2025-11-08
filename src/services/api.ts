@@ -1,9 +1,6 @@
 // src/services/api.ts
-const API_BASE =
-  (import.meta as any)?.env?.VITE_API_BASE_URL ||
-  (process as any)?.env?.VITE_API_BASE_URL ||
-  (typeof window !== 'undefined' && (window as any).__env?.VITE_API_BASE_URL) ||
-  'http://127.0.0.1:8001';
+import { getEffectiveBase } from './config';
+const API_BASE = getEffectiveBase();
 
 export type Lectura = {
   maquinaria_id: string;

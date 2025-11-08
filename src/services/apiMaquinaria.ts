@@ -2,11 +2,8 @@
 import { Maquinaria } from '@/constants/maquinaria';
 
 // Lectura segura de variable de entorno (compatible con Vite, Webpack, etc.)
-const API_BASE =
-  (import.meta as any)?.env?.VITE_API_BASE_URL ||
-  (process as any)?.env?.VITE_API_BASE_URL ||
-  (typeof window !== 'undefined' && (window as any).__env?.VITE_API_BASE_URL) ||
-  'http://127.0.0.1:8001';
+import { getEffectiveBase } from './config';
+const API_BASE = getEffectiveBase();
 
 // Obtener todas las máquinas
 export async function getMaquinaria(): Promise<Maquinaria[]> {
